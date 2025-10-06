@@ -7,5 +7,12 @@ A web crawler tool or commonly referred as a bot is used by search engine compan
 
 This is my motivation for creating Phoenix which not only can scrape data but also generate link reports (a page that references other pages on the website), and add a markdown file(s) for each page crawled for llms to utilize.
 
+## Build Log
 
+- URL normalization (remove scheme and trailing slashes)
+- Extract H1 tags from HTML
+- Extract first paragraph from HTML (with main tag priority)
+- Extract all links from HTML pages (convert relative to absolute URLs)
+- Extract all image URLs from HTML (convert relative to absolute URLs)
+- Structured page data extraction (PageData struct)
 
