@@ -15,4 +15,8 @@ This is my motivation for creating Phoenix which not only can scrape data but al
 - Extract all links from HTML pages (convert relative to absolute URLs)
 - Extract all image URLs from HTML (convert relative to absolute URLs)
 - Structured page data extraction (PageData struct)
+- CLI argument validation and handling
+- HTTP fetching with User-Agent header and content-type validation
+- Recursive web crawling with same-domain restriction
+- Link reference counting across entire website
 

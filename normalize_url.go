@@ -19,10 +19,9 @@ func normalizeURL(link string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error parsing url: %w", err)
 	}
-	if parsedUrl.Path[len(parsedUrl.Path)-1] == '/' {
+	if len(parsedUrl.Path) > 0 && parsedUrl.Path[len(parsedUrl.Path)-1] == '/' {
 		parsedUrl.Path = parsedUrl.Path[:len(parsedUrl.Path)-1]
 	}
 	normalizedUrl := parsedUrl.Hostname() + parsedUrl.Path
-	// fmt.Println(normalizedUrl)
 	return normalizedUrl, nil
 }
