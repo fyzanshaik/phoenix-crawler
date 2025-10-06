@@ -6,30 +6,45 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 )
 
 type config struct {
-	pages              map[string]int
+	pages              map[string]PageData
 	baseURL            *url.URL
 	mu                 *sync.Mutex
 	concurrencyControl chan struct{}
 	wg                 *sync.WaitGroup
+	maxPages           int
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("no website provided")
+	if len(os.Args) < 4 {
+		fmt.Println("usage: crawler URL maxConcurrency maxPages")
 		os.Exit(1)
 	}
 
-	if len(os.Args) > 2 {
+	if len(os.Args) > 4 {
 		fmt.Println("too many arguments provided")
 		os.Exit(1)
 	}
 
 	rawBaseURL := os.Args[1]
+
+	maxConcurrency, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Printf("error parsing maxConcurrency: %v\n", err)
+		os.Exit(1)
+	}
+
+	maxPages, err := strconv.Atoi(os.Args[3])
+	if err != nil {
+		fmt.Printf("error parsing maxPages: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Printf("starting crawl of: %s\n", rawBaseURL)
 
 	baseURL, err := url.Parse(rawBaseURL)
@@ -38,13 +53,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	maxConcurrency := 10
 	cfg := &config{
-		pages:              make(map[string]int),
+		pages:              make(map[string]PageData),
 		baseURL:            baseURL,
 		mu:                 &sync.Mutex{},
 		concurrencyControl: make(chan struct{}, maxConcurrency),
 		wg:                 &sync.WaitGroup{},
+		maxPages:           maxPages,
 	}
 
 	cfg.wg.Go(func() {
@@ -53,21 +68,29 @@ func main() {
 
 	cfg.wg.Wait()
 
-	for url, count := range cfg.pages {
-		fmt.Printf("%s: %d\n", url, count)
+	err = writeCSVReport(cfg.pages, "report.csv")
+	if err != nil {
+		fmt.Printf("error writing CSV report: %v\n", err)
+		os.Exit(1)
 	}
+
+	fmt.Printf("Crawl complete! Found %d pages. Report saved to report.csv\n", len(cfg.pages))
 }
 
-func (cfg *config) addPageVisit(normalizedURL string) bool {
+func (cfg *config) addPageVisit(pageData PageData) bool {
 	cfg.mu.Lock()
 	defer cfg.mu.Unlock()
 
-	if _, exists := cfg.pages[normalizedURL]; exists {
-		cfg.pages[normalizedURL]++
+	if len(cfg.pages) >= cfg.maxPages {
 		return false
 	}
 
-	cfg.pages[normalizedURL] = 1
+	normalizedURL := pageData.URL
+	if _, exists := cfg.pages[normalizedURL]; exists {
+		return false
+	}
+
+	cfg.pages[normalizedURL] = pageData
 	return true
 }
 
@@ -91,10 +114,16 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		return
 	}
 
-	isFirst := cfg.addPageVisit(normalizedURL)
-	if !isFirst {
+	cfg.mu.Lock()
+	if len(cfg.pages) >= cfg.maxPages {
+		cfg.mu.Unlock()
 		return
 	}
+	if _, exists := cfg.pages[normalizedURL]; exists {
+		cfg.mu.Unlock()
+		return
+	}
+	cfg.mu.Unlock()
 
 	fmt.Printf("crawling: %s\n", rawCurrentURL)
 	html, err := getHTML(rawCurrentURL)
@@ -103,13 +132,15 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		return
 	}
 
-	urls, err := getURLsFromHTML(html, cfg.baseURL)
-	if err != nil {
-		fmt.Printf("error getting URLs: %v\n", err)
+	pageData := extractPageData(html, rawCurrentURL)
+	pageData.URL = normalizedURL
+
+	isFirst := cfg.addPageVisit(pageData)
+	if !isFirst {
 		return
 	}
 
-	for _, nextURL := range urls {
+	for _, nextURL := range pageData.OutgoingLinks {
 		cfg.wg.Go(func() {
 			cfg.crawlPage(nextURL)
 		})
